@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reference Status Checker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-radius: 50%;
+            border-top: 4px solid #3b82f6;
+            width: 40px;
+            height: 40px;
+            animation: spin 1.5s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-4 sm:p-6">
+
+    <main class="w-full max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- Left Column: Search & Info -->
+        <div class="lg:col-span-5 lg:sticky top-6">
+            <div class="bg-white rounded-xl shadow-lg p-6 md:p-8 flex flex-col h-full">
+                <div class="text-center">
+                    <img src="https://i.imgur.com/4qNgA8E.png" alt="Company Logo" class="mb-6 h-20 w-auto mx-auto">
+                    <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Reference Status Checker</h1>
+                    <p class="text-gray-500 mt-2">Enter the full reference number to view its status.</p>
+                </div>
+
+                <div class="mt-8">
+                    <label for="ref-input" class="mb-2 text-sm font-medium text-gray-700">Reference Number</label>
+                    <input type="text" id="ref-input" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow text-lg" placeholder="e.g., AHS/SPA/01/01-14/IAM">
+                    <button id="search-btn" class="mt-4 w-full bg-blue-600 text-white font-semibold px-8 py-3 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-transform transform hover:scale-105 shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        Search
+                    </button>
+                </div>
+
+                <!-- File Info Display -->
+                <div id="file-info-container" class="mt-6 border-t border-gray-200 pt-6 hidden">
+                     <h2 class="text-lg font-semibold text-gray-800 mb-4">File Details</h2>
+                     <div class="space-y-3 text-sm">
+                         <div class="flex justify-between items-start gap-4">
+                             <span class="font-medium text-gray-500 flex-shrink-0">Vendor</span>
+                             <span id="vendor-info" class="font-semibold text-gray-900 text-right"></span>
+                         </div>
+                         <div class="flex justify-between items-start gap-4">
+                             <span class="font-medium text-gray-500 flex-shrink-0">Purchaser</span>
+                             <span id="purchaser-info" class="font-semibold text-gray-900 text-right"></span>
+                         </div>
+                         <div class="flex justify-between items-start gap-4">
+                             <span class="font-medium text-gray-500 flex-shrink-0">Current Stage</span>
+                             <span id="current-stage-info" class="font-semibold text-blue-600 text-right"></span>
+                         </div>
+                     </div>
+                </div>
+                
+                <div class="flex-grow"></div>
+                <p class="text-xs text-gray-500 mt-8 text-center">Powered by RBX</p>
+            </div>
+        </div>
+
+        <!-- Right Column: Timeline Results -->
+        <div class="lg:col-span-7">
+            <div class="bg-white rounded-xl shadow-lg p-3 sm:p-5 min-h-[85vh]">
+                 <div id="result-container" class="flex flex-col items-center justify-center h-full">
+                    <!-- Placeholder shown before first search -->
+                    <div id="placeholder" class="text-center text-gray-500 p-8">
+                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                            <path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" />
+                        </svg>
+                        <h3 class="mt-4 text-sm font-medium text-gray-900">Search for a reference number</h3>
+                        <p class="mt-1 text-sm text-gray-500">The status timeline will appear here.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        // --- Configuration ---
+        const GOOGLE_SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQhVOvcKbqZZuAuYE-FgLykZX5PRpeTMgJ1SpAAKAcZRRTb8Bt8cPOSQXj0EWL6iC7eQRofXmggke-T/pub?gid=0&single=true&output=csv';
+        const SEARCH_COLUMN_INDEX = 1; // Column B
+        const VENDOR_COLUMN_INDEX = 4; // Column E
+        const PURCHASER_COLUMN_INDEX = 6; // Column G
+        const STAGES_COLUMN_INDEX = 14; // Column O
+        
+        const STAGES_INFO = [
+            { id: 1, title: 'Initial File Opening & Setup', description: 'The law firm opens the case file, assigns it internally, contacts the client, and begins preparing documents including early drafting.' },
+            { id: 2, title: 'Consent & MOT Prep', description: 'The firm applies for necessary consents like developer consent, PR1MA consent, or prepares for transfer of ownership (MOT).'},
+            { id: 3, title: 'Agreement Execution', description: 'All parties (buyer, seller, borrower) sign the Sale and Purchase Agreement (SPA) and Loan Agreement (LA), which are then stamped.'},
+            { id: 4, title: 'Developer & SPA Solicitor Correspondence', description: 'The firm communicates with the developer or liquidator to obtain required property documents such as Letter of No Objection (LONO) or Redemption Statement (RS).'},
+            { id: 5, title: 'Loan Agreement Execution', description: 'The firm finalizes execution of the Loan Agreement and submits it as per the bank’s legal documentation process.'},
+            { id: 6, title: 'FA Stamping', description: 'Stamp duty for the Facility Agreement is paid and the stamped documents are forwarded to the lending bank.'},
+            { id: 7, title: 'Consent & Low-Cost Application', description: 'Applications for developer consent and low-cost housing approvals are submitted and monitored.'},
+            { id: 8, title: 'Kaveat Registration', description: 'The firm registers a caveat on behalf of the bank to protect the bank’s interest in the property.'},
+            { id: 9, title: 'Redeem Preparation', description: 'The firm compiles all necessary documents to allow the buyer’s bank to redeem (settle) the seller’s outstanding loan.'},
+            { id: 10, title: 'Redeem Execution', description: 'The buyer’s bank disburses the redemption sum to the seller’s bank to remove the existing charge.'},
+            { id: 11, title: 'Discharge of Charge Process', description: 'The seller’s bank provides discharge documents, and the firm ensures they are received and forwarded for title updates.'},
+            { id: 12, title: 'Stamp Duty & Adjudication', description: 'Stamp duty for transfer documents (Form 16A/16N, DRR) is calculated, paid, and documents are stamped.'},
+            { id: 13, title: 'Blanket Consent & PA', description: 'The firm obtains blanket consent from the developer and files additional documents like Power of Attorney.'},
+            { id: 14, title: 'Land Office Presentation', description: 'The complete set of title transfer documents is presented to the Land Office for official processing.'},
+            { id: 15, title: 'Bank Payment Processing (BPP)', description: 'The firm advises the bank to prepare the final disbursement (BPP) to the seller after presentation.'},
+            { id: 16, title: 'Bank Disbursement BPP', description: 'The buyer’s bank releases the balance purchase price to the seller and confirms it to the firm.'},
+            { id: 17, title: 'Finalization & Vacant Possession', description: 'The firm arranges for vacant possession (handover of keys) and sends original documents for safekeeping.'}
+        ];
+
+        // --- DOM element references ---
+        const searchBtn = document.getElementById('search-btn');
+        const refInput = document.getElementById('ref-input');
+        const resultContainer = document.getElementById('result-container');
+        const placeholder = document.getElementById('placeholder');
+        const fileInfoContainer = document.getElementById('file-info-container');
+
+        // --- Application State ---
+        let sheetData = null; 
+
+        /** A highly robust CSV parser. */
+        function parseCsv(csvText) {
+            const rows = [];
+            let currentRow = [];
+            let currentCell = '';
+            let inQuotes = false;
+            csvText = csvText.replace(/\r\n/g, '\n');
+            for (let i = 0; i < csvText.length; i++) {
+                const char = csvText[i];
+                if (inQuotes) {
+                    if (char === '"') {
+                        if (i + 1 < csvText.length && csvText[i + 1] === '"') {
+                            currentCell += '"';
+                            i++;
+                        } else { inQuotes = false; }
+                    } else { currentCell += char; }
+                } else {
+                    if (char === '"') { inQuotes = true;
+                    } else if (char === ',') {
+                        currentRow.push(currentCell.trim());
+                        currentCell = '';
+                    } else if (char === '\n') {
+                        currentRow.push(currentCell.trim());
+                        rows.push(currentRow);
+                        currentRow = [];
+                        currentCell = '';
+                    } else { currentCell += char; }
+                }
+            }
+            if (currentCell || currentRow.length > 0) {
+                 currentRow.push(currentCell.trim());
+                 rows.push(currentRow);
+            }
+            return rows;
+        }
+
+        /** Fetches and parses CSV data. */
+        async function loadSheetData() {
+            searchBtn.disabled = true;
+            refInput.disabled = true;
+            resultContainer.innerHTML = '<div class="flex items-center justify-center h-full"><div class="loader"></div><p class="ml-4 text-gray-500">Loading data...</p></div>';
+            
+            try {
+                const response = await fetch(`${GOOGLE_SHEET_URL}&t=${new Date().getTime()}`);
+                if (!response.ok) throw new Error(`Network response was not ok: ${response.statusText}`);
+                const csvText = await response.text();
+                sheetData = parseCsv(csvText);
+                
+                resultContainer.innerHTML = `<div id="placeholder" class="text-center text-gray-500 p-8">...</div>`; // Re-add placeholder
+                document.getElementById('placeholder').innerHTML = `<svg class="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true"><path vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg><h3 class="mt-4 text-sm font-medium text-gray-900">Data Loaded</h3><p class="mt-1 text-sm text-gray-500">Please enter a reference number.</p>`;
+                searchBtn.disabled = false;
+                refInput.disabled = false;
+            } catch (error) {
+                console.error("Error loading sheet data:", error);
+                resultContainer.innerHTML = `<div class="p-8"><p class="text-red-600 font-semibold">Error: Failed to load data. Please refresh the page.</p></div>`;
+            }
+        }
+
+        /** Renders a special status card for non-timeline statuses. */
+        function renderSpecialStatus(status) {
+            let title, description, icon, bgColor, textColor;
+
+            const upperCaseStatus = status.toUpperCase();
+
+            if (upperCaseStatus.includes('CANCEL')) {
+                title = 'File Cancelled';
+                description = 'This transaction has been cancelled and will not proceed. For more details, please contact our team directly.';
+                icon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+                bgColor = 'bg-red-50';
+                textColor = 'text-red-700';
+            } else if (upperCaseStatus.includes('CLOSE')) {
+                title = 'File Closed';
+                description = 'This transaction has been successfully completed and the file is now closed. All stages are finished.';
+                icon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+                bgColor = 'bg-green-50';
+                textColor = 'text-green-700';
+            } else { // KIV
+                title = 'File On Hold (KIV)';
+                description = 'This file is currently on hold (Keep In View). We are monitoring it for further updates. Please contact our team if you have any questions.';
+                icon = `<svg xmlns="http://www.w3.org/2000/svg" class="h-16 w-16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1"><path stroke-linecap="round" stroke-linejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>`;
+                bgColor = 'bg-yellow-50';
+                textColor = 'text-yellow-700';
+            }
+
+            resultContainer.innerHTML = `
+                <div class="p-8 text-center flex flex-col items-center justify-center h-full ${bgColor} rounded-lg">
+                    <div class="${textColor}">${icon}</div>
+                    <h3 class="mt-4 text-2xl font-bold ${textColor}">${title}</h3>
+                    <p class="mt-2 text-md text-gray-600">${description}</p>
+                    <p class="mt-4 text-sm font-semibold text-gray-800">Status Noted: <span class="font-normal">${status}</span></p>
+                </div>
+            `;
+        }
+
+        /** Renders the vertical timeline based on the current stage. */
+        function renderTimeline(currentStage) {
+            let currentStageNumber = 0;
+            const match = currentStage.match(/^S(\d+)/);
+            if(match && match[1]) {
+                currentStageNumber = parseInt(match[1], 10);
+            }
+            
+            let timelineHtml = '<div class="w-full text-left p-2 sm:p-4">';
+            
+            STAGES_INFO.forEach((stage, index) => {
+                const isCompleted = stage.id < currentStageNumber;
+                const isCurrent = stage.id === currentStageNumber;
+                
+                let textClass = 'text-gray-500';
+                let iconHtml = `<div class="w-3 h-3 bg-gray-300 rounded-full"></div>`;
+                let currentStageId = '';
+
+                if(isCompleted) {
+                    textClass = 'text-gray-900';
+                    iconHtml = `<div class="w-5 h-5 bg-green-500 rounded-full flex items-center justify-center"><svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path></svg></div>`;
+                } else if(isCurrent) {
+                    textClass = 'text-blue-600 font-bold';
+                    iconHtml = `<div class="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center ring-4 ring-blue-200"><div class="w-2 h-2 bg-white rounded-full"></div></div>`;
+                    currentStageId = 'id="current-timeline-stage"';
+                }
+                
+                timelineHtml += `
+                    <div ${currentStageId} class="relative flex items-start">
+                        ${index !== STAGES_INFO.length - 1 ? `<div class="absolute left-[9px] top-6 h-full w-0.5 ${stage.id < currentStageNumber ? 'bg-green-500' : 'bg-gray-300'}"></div>` : ''}
+                        <div class="z-10">${iconHtml}</div>
+                        <div class="ml-4 pb-8">
+                            <h3 class="font-semibold ${textClass}">S${stage.id} - ${stage.title}</h3>
+                            <p class="text-sm text-gray-500 mt-1">${stage.description}</p>
+                            ${isCurrent ? `<div class="mt-2 p-3 bg-blue-100 rounded-lg border border-blue-200"><p class="font-semibold text-sm text-blue-800">Current Status: <span class="font-normal">${currentStage}</span></p></div>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            timelineHtml += '</div>';
+            resultContainer.innerHTML = timelineHtml;
+            
+            const currentStageElement = document.getElementById('current-timeline-stage');
+            if(currentStageElement) {
+                requestAnimationFrame(() => {
+                    currentStageElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                });
+            }
+        }
+        
+        /** Displays the extra file info in the left column. */
+        function displayFileInfo(result) {
+            document.getElementById('vendor-info').textContent = result.vendor;
+            document.getElementById('purchaser-info').textContent = result.purchaser;
+            document.getElementById('current-stage-info').textContent = result.stage;
+            fileInfoContainer.classList.remove('hidden');
+        }
+
+        /** Handles the search logic. */
+        function handleSearch() {
+            if (!sheetData) {
+                resultContainer.innerHTML = `<div class="p-8"><p class="text-yellow-700 font-semibold">Data is still loading. Please wait.</p></div>`;
+                return;
+            }
+
+            const searchTerm = refInput.value.trim().toLowerCase();
+            if (!searchTerm) {
+                resultContainer.innerHTML = `<div class="p-8"><p class="text-yellow-700 font-semibold">Please enter a reference number.</p></div>`;
+                return;
+            }
+            
+            let foundResult = null;
+            for (const row of sheetData) {
+                if(Array.isArray(row) && row.length > SEARCH_COLUMN_INDEX) {
+                    const cellValue = (row[SEARCH_COLUMN_INDEX] || '').toLowerCase();
+                    if (cellValue === searchTerm) {
+                        foundResult = {
+                            ref: row[SEARCH_COLUMN_INDEX] || 'N/A',
+                            stage: row[STAGES_COLUMN_INDEX] || 'N/A',
+                            vendor: row[VENDOR_COLUMN_INDEX] || 'N/A',
+                            purchaser: row[PURCHASER_COLUMN_INDEX] || 'N/A',
+                        };
+                        break;
+                    }
+                }
+            }
+
+            if (foundResult) {
+                const upperCaseStage = foundResult.stage.toUpperCase();
+                if (upperCaseStage.includes('CANCEL') || upperCaseStage.includes('CLOSE') || upperCaseStage.includes('KIV')) {
+                    renderSpecialStatus(foundResult.stage);
+                } else {
+                    renderTimeline(foundResult.stage);
+                }
+                displayFileInfo(foundResult);
+            } else {
+                fileInfoContainer.classList.add('hidden'); // Hide info on failed search
+                resultContainer.innerHTML = `
+                    <div class="text-center p-8">
+                        <p class="text-md text-gray-500">No record found for:</p>
+                        <p class="text-2xl font-bold text-red-600 mt-1">${refInput.value.trim()}</p>
+                    </div>
+                `;
+            }
+        }
+        
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', loadSheetData);
+        searchBtn.addEventListener('click', handleSearch);
+        refInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') handleSearch();
+        });
+    </script>
+</body>
+</html>
