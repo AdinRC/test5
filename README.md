@@ -192,13 +192,6 @@ This project is proprietary software. All rights reserved.
 
 ## 📞 Support
 
-For technical support or questions:
-- **Email**: [Your Contact Email]
-- **Documentation**: This README file
-- **Issues**: Check browser console for error messages
-
----
-
 **Version**: 1.0.0  
 **Last Updated**: December 2024  
 **Maintained By**: RBX Team
